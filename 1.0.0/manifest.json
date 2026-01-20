@@ -1,0 +1,10 @@
+{
+    "polymod": {
+        "name": "Cinema",
+        "id": "cinema",
+        "author": "HeroHunterr; Jakob",
+        "targets": ["0.5.2"],
+        "main": "main.mod.js"
+    },
+    "dependencies": []
+}
