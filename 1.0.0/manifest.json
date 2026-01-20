@@ -1,8 +1,8 @@
 {
     "polymod": {
-        "name": "Cinema",
+        "name": "PolyCinema",
         "id": "cinema",
-        "author": "HeroHunterr; Jakob",
+        "author": "Hero, Jakob",
         "targets": ["0.5.2"],
         "main": "main.mod.js"
     },
