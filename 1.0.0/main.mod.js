@@ -1,11 +1,149 @@
 import { PolyMod } from "https://pml.orangy.cfd/PolyTrackMods/PolyModLoader/0.5.2/PolyModLoader.js";
 
-globalThis.cinemaEnabled = false;
-
-const DEFAULT_RATIO = 2.39;
-let currentPreset = 1;
+globalThis.cinemaEnabled = true;
 
 const CINEMA_STATE_KEY = "__polyCinemaState";
+
+// Presets are width/height aspect ratios
+const PRESETS = [
+  { name: "Off", aspect: null }, // means: use full screen
+  { name: "1:1", aspect: 1 / 1 },
+  { name: "16:9", aspect: 16 / 9 },
+];
+
+// Start preset (index into PRESETS)
+let currentPreset = 0;
+
+let toggledPreset = 0;
+
+function realScreenW() {
+  return document.documentElement.clientWidth;
+}
+function realScreenH() {
+  return document.documentElement.clientHeight;
+}
+
+(function installViewportLies() {
+  if (globalThis.__polyCinemaViewportLiesInstalled) return;
+  globalThis.__polyCinemaViewportLiesInstalled = true;
+
+  const proto = HTMLCanvasElement.prototype;
+
+  // Keep original getters
+  const origClientWidth = Object.getOwnPropertyDescriptor(
+    proto,
+    "clientWidth",
+  )?.get;
+  const origClientHeight = Object.getOwnPropertyDescriptor(
+    proto,
+    "clientHeight",
+  )?.get;
+
+  const origGetBoundingClientRect = proto.getBoundingClientRect;
+
+  function getCinemaSize() {
+    const wrap = document.getElementById("poly-cinema-wrap");
+    if (!globalThis.cinemaEnabled || !wrap) return null;
+
+    const r = wrap.getBoundingClientRect();
+    const w = Math.max(1, r.width | 0);
+    const h = Math.max(1, r.height | 0);
+    return { w, h };
+  }
+
+  // Lie about clientWidth/clientHeight
+  Object.defineProperty(proto, "clientWidth", {
+    configurable: true,
+    get() {
+      const s = getCinemaSize();
+      if (s && this.id === "screen") return s.w;
+      return origClientWidth ? origClientWidth.call(this) : 0;
+    },
+  });
+
+  Object.defineProperty(proto, "clientHeight", {
+    configurable: true,
+    get() {
+      const s = getCinemaSize();
+      if (s && this.id === "screen") return s.h;
+      return origClientHeight ? origClientHeight.call(this) : 0;
+    },
+  });
+
+  // Lie about bounding rect too
+  proto.getBoundingClientRect = function () {
+    const s = getCinemaSize();
+    if (s && this.id === "screen") {
+      const r = wrap.getBoundingClientRect();
+      return {
+        x: r.x,
+        y: r.y,
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+        width: r.width,
+        height: r.height,
+        toJSON() {},
+      };
+    }
+    return origGetBoundingClientRect.call(this);
+  };
+
+  console.log(
+    "[PolyCinema] Installed viewport lies (clientWidth/Height + BCR)",
+  );
+})();
+
+(function installVirtualWindowSize() {
+  if (globalThis.__polyCinemaVirtualWindowInstalled) return;
+  globalThis.__polyCinemaVirtualWindowInstalled = true;
+
+  const win = window;
+
+  const origInnerW = Object.getOwnPropertyDescriptor(
+    Window.prototype,
+    "innerWidth",
+  )?.get;
+  const origInnerH = Object.getOwnPropertyDescriptor(
+    Window.prototype,
+    "innerHeight",
+  )?.get;
+
+  // fallback in case descriptors are missing
+  const realInnerWidth = () => document.documentElement.clientWidth;
+  const realInnerHeight = () => document.documentElement.clientHeight;
+
+  globalThis.__polyCinemaVirtualSize =
+    globalThis.__polyCinemaVirtualSize || null;
+
+  function getVirtualW() {
+    const v = globalThis.__polyCinemaVirtualSize;
+    return globalThis.cinemaEnabled && v && v.w ? v.w : realInnerWidth();
+  }
+
+  function getVirtualH() {
+    const v = globalThis.__polyCinemaVirtualSize;
+    return globalThis.cinemaEnabled && v && v.h ? v.h : realInnerHeight();
+  }
+
+  // Patch window.innerWidth / innerHeight reads
+  Object.defineProperty(win, "innerWidth", {
+    configurable: true,
+    get() {
+      return getVirtualW();
+    },
+  });
+
+  Object.defineProperty(win, "innerHeight", {
+    configurable: true,
+    get() {
+      return getVirtualH();
+    },
+  });
+
+  console.log("[PolyCinema] Virtual window size hook installed");
+})();
 
 function getGL() {
   return globalThis.__ppGL || null;
@@ -15,11 +153,32 @@ function getUI() {
   return document.querySelector("#ui");
 }
 
-function computeContentHeight(ratio) {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const targetH = Math.round(w / ratio);
-  return Math.min(h, targetH);
+function fitAspect(targetAspect) {
+  const screenW = realScreenW();
+  const screenH = realScreenH();
+
+  // If preset is "Off" or invalid, return full screen
+  if (!targetAspect || !Number.isFinite(targetAspect) || targetAspect <= 0) {
+    return { contentW: screenW, contentH: screenH };
+  }
+
+  const screenAspect = screenW / screenH;
+
+  let contentW, contentH;
+
+  if (screenAspect > targetAspect) {
+    contentH = screenH;
+    contentW = Math.round(contentH * targetAspect);
+  } else {
+    contentW = screenW;
+    contentH = Math.round(contentW / targetAspect);
+  }
+
+  // Safety clamp
+  contentW = Math.max(1, Math.min(screenW, contentW));
+  contentH = Math.max(1, Math.min(screenH, contentH));
+
+  return { contentW, contentH };
 }
 
 function ensureCinemaDOM() {
@@ -41,24 +200,21 @@ function ensureCinemaDOM() {
   if (!wrap) {
     wrap = document.createElement("div");
     wrap.id = "poly-cinema-wrap";
-
     Object.assign(wrap.style, {
       position: "fixed",
-      left: "0",
+      left: "50%",
       top: "50%",
-      transform: "translateY(-50%)",
-      width: "100%",
+      transform: "translate(-50%, -50%)",
       overflow: "hidden",
       zIndex: "999999",
     });
-
     document.body.appendChild(wrap);
   }
 
   return { bg, wrap };
 }
 
-function applyLetterbox(gl, ratio) {
+function applyLetterbox(gl) {
   if (!gl || !gl.canvas) return false;
 
   const canvas = gl.canvas;
@@ -67,18 +223,14 @@ function applyLetterbox(gl, ratio) {
 
   const { bg, wrap } = ensureCinemaDOM();
 
+  const preset = PRESETS[currentPreset] || PRESETS[0];
+  const { contentW, contentH } = fitAspect(preset.aspect);
 
-  //rescaling based on preset
-  if (currentPreset == 0) {
-    const contentH = computeContentHeight(ratio);
-    const contentW = window.innerWidth;
-  } else if (currentPreset == 1) {
-    const contentH = window.innerHeight;
-    const contentW = window.innerWidth;
-  }
+  globalThis.__polyCinemaVirtualSize = preset.aspect
+    ? { w: contentW, h: contentH }
+    : null;
 
-
-
+  // Save original placement once
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   if (!st.saved) {
     st.saved = true;
@@ -93,16 +245,15 @@ function applyLetterbox(gl, ratio) {
     st.uiStyle = ui.getAttribute("style") || "";
   }
 
-
-  wrap.style.height = `${contentH}px`;
+  // Size wrapper
   wrap.style.width = `${contentW}px`;
-  
+  wrap.style.height = `${contentH}px`;
 
-  // Move elements inside wrapper
+  // Move into wrapper
   if (canvas.parentElement !== wrap) wrap.appendChild(canvas);
   if (ui.parentElement !== wrap) wrap.appendChild(ui);
 
-  // Make canvas fill wrapper
+  // Canvas fills wrapper
   Object.assign(canvas.style, {
     position: "absolute",
     left: "0",
@@ -113,7 +264,7 @@ function applyLetterbox(gl, ratio) {
     zIndex: "0",
   });
 
-  // Make UI fill wrapper too
+  // UI fills wrapper
   Object.assign(ui.style, {
     position: "absolute",
     left: "0",
@@ -123,7 +274,7 @@ function applyLetterbox(gl, ratio) {
     zIndex: "1",
   });
 
-  // Resize WebGL drawing buffer to match wrapper
+  // Resize drawing buffer to wrapper size
   const dpr = window.devicePixelRatio || 1;
   const bufferW = Math.max(1, Math.floor(contentW * dpr));
   const bufferH = Math.max(1, Math.floor(contentH * dpr));
@@ -135,11 +286,18 @@ function applyLetterbox(gl, ratio) {
 
   try {
     gl.viewport(0, 0, bufferW, bufferH);
+    canvas.style.width = `${contentW}px`;
+    canvas.style.height = `${contentH}px`;
   } catch {}
 
-  // Keep bg behind and wrap on top
   bg.style.display = "block";
   wrap.style.display = "block";
+
+  const sizeKey = `${contentW}x${contentH}`;
+  if (st.lastSizeKey !== sizeKey) {
+    st.lastSizeKey = sizeKey;
+    window.dispatchEvent(new Event("resize"));
+  }
 
   return true;
 }
@@ -151,19 +309,20 @@ function disableLetterbox(gl) {
   const canvas = gl?.canvas;
   const ui = getUI();
 
-  // Restore canvas DOM placement
+  globalThis.__polyCinemaVirtualSize = null;
+
+  // Restore DOM
   if (canvas && st.canvasParent) {
     if (st.canvasNext) st.canvasParent.insertBefore(canvas, st.canvasNext);
     else st.canvasParent.appendChild(canvas);
   }
 
-  // Restore UI DOM placement
   if (ui && st.uiParent) {
     if (st.uiNext) st.uiParent.insertBefore(ui, st.uiNext);
     else st.uiParent.appendChild(ui);
   }
 
-  // Restore original inline styles
+  // Restore inline styles
   if (canvas) {
     if (st.canvasStyle) canvas.setAttribute("style", st.canvasStyle);
     else canvas.removeAttribute("style");
@@ -173,10 +332,10 @@ function disableLetterbox(gl) {
     else ui.removeAttribute("style");
   }
 
-  // Remove cinema DOM
   document.getElementById("poly-cinema-wrap")?.remove();
   document.getElementById("poly-cinema-bg")?.remove();
 
+  // Restore buffer to full screen
   try {
     const dpr = window.devicePixelRatio || 1;
     const bufferW = Math.max(1, Math.floor(window.innerWidth * dpr));
@@ -197,7 +356,7 @@ function tickEnforce() {
   if (!gl) return;
 
   if (globalThis.cinemaEnabled) {
-    applyLetterbox(gl, DEFAULT_RATIO);
+    applyLetterbox(gl);
   } else {
     const st = globalThis[CINEMA_STATE_KEY];
     if (st && st.wasEnabled) {
@@ -209,7 +368,7 @@ function tickEnforce() {
   st.wasEnabled = !!globalThis.cinemaEnabled;
 }
 
-// Enforce at end-of-frame so the game can't undo it
+// Hook RAF once
 (function ensureRafHooked() {
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   if (st.rafHooked) return;
@@ -227,20 +386,52 @@ function tickEnforce() {
   console.log("[PolyCinema] Hooked requestAnimationFrame");
 })();
 
+// Public console helpers
+globalThis.__polyCinemaSetPreset = function (idx) {
+  currentPreset = ((idx % PRESETS.length) + PRESETS.length) % PRESETS.length;
+  console.log(
+    "[PolyCinema] Preset =",
+    currentPreset,
+    PRESETS[currentPreset].name,
+  );
+};
+globalThis.__polyCinemaNextPreset = function () {
+  globalThis.__polyCinemaSetPreset(currentPreset + 1);
+};
+globalThis.__polyCinemaPrevPreset = function () {
+  globalThis.__polyCinemaSetPreset(currentPreset - 1);
+};
+
 class cinema extends PolyMod {
   init = (pml) => {
     pml.registerBindCategory("Cinema bars");
 
     pml.registerKeybind(
-      "Toggle Cinematic bars",
+      "Toggle Cinema",
       "toggle_cinema",
       "keydown",
       "KeyC",
       null,
       () => {
-        globalThis.cinemaEnabled = !globalThis.cinemaEnabled;
-        console.log("[PolyCinema] cinemaEnabled =", globalThis.cinemaEnabled);
+        if (currentPreset !== 0) {
+          toggledPreset = currentPreset;
+          currentPreset = 0; // Off
+        } else {
+          currentPreset = toggledPreset || 5;
+        }
         tickEnforce();
+      },
+    );
+
+    pml.registerKeybind(
+      "Next Cinema Preset",
+      "next_cinema_preset",
+      "keydown",
+      "KeyV",
+      null,
+      () => {
+        globalThis.__polyCinemaNextPreset();
+        if (globalThis.cinemaEnabled) tickEnforce();
       },
     );
   };
