@@ -2,9 +2,7 @@ import { PolyMod } from "https://pml.orangy.cfd/PolyTrackMods/PolyModLoader/0.5.
 
 globalThis.cinemaEnabled = false;
 
-const DEFAULT_RATIO = 2.39;
-let currentPreset = 1;
-
+const DEFAULT_RATIO = 1; 
 const CINEMA_STATE_KEY = "__polyCinemaState";
 
 function getGL() {
@@ -22,87 +20,22 @@ function computeContentHeight(ratio) {
   return Math.min(h, targetH);
 }
 
-function ensureCinemaDOM() {
-  let bg = document.getElementById("poly-cinema-bg");
-  if (!bg) {
-    bg = document.createElement("div");
-    bg.id = "poly-cinema-bg";
-    Object.assign(bg.style, {
-      position: "fixed",
-      inset: "0",
-      background: "#000",
-      zIndex: "999990",
-      pointerEvents: "none",
-    });
-    document.body.appendChild(bg);
-  }
+//lowk dont know what im doing with this lmao
 
-  let wrap = document.getElementById("poly-cinema-wrap");
-  if (!wrap) {
-    wrap = document.createElement("div");
-    wrap.id = "poly-cinema-wrap";
-
-    Object.assign(wrap.style, {
-      position: "fixed",
-      left: "0",
-      top: "50%",
-      transform: "translateY(-50%)",
-      width: "100%",
-      overflow: "hidden",
-      zIndex: "999999",
-    });
-
-    document.body.appendChild(wrap);
-  }
-
-  return { bg, wrap };
+function computeContentWidth(ratio) {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const wanted = Math.round(h + ratio);
+  return Math.min(w, wanted);
 }
 
 function applyLetterbox(gl, ratio) {
   if (!gl || !gl.canvas) return false;
 
   const canvas = gl.canvas;
-  const ui = getUI();
-  if (!ui) return false;
+  const contentH = computeContentHeight(ratio);
+  const contentW = computeContentWidth(ratio);
 
-  const { bg, wrap } = ensureCinemaDOM();
-
-
-  //rescaling based on preset
-  if (currentPreset == 0) {
-    const contentH = computeContentHeight(ratio);
-    const contentW = window.innerWidth;
-  } else if (currentPreset == 1) {
-    const contentH = window.innerHeight;
-    const contentW = window.innerWidth;
-  }
-
-
-
-  const st = (globalThis[CINEMA_STATE_KEY] ||= {});
-  if (!st.saved) {
-    st.saved = true;
-
-    st.canvasParent = canvas.parentElement;
-    st.canvasNext = canvas.nextSibling;
-
-    st.uiParent = ui.parentElement;
-    st.uiNext = ui.nextSibling;
-
-    st.canvasStyle = canvas.getAttribute("style") || "";
-    st.uiStyle = ui.getAttribute("style") || "";
-  }
-
-
-  wrap.style.height = `${contentH}px`;
-  wrap.style.width = `${contentW}px`;
-  
-
-  // Move elements inside wrapper
-  if (canvas.parentElement !== wrap) wrap.appendChild(canvas);
-  if (ui.parentElement !== wrap) wrap.appendChild(ui);
-
-  // Make canvas fill wrapper
   Object.assign(canvas.style, {
     position: "absolute",
     left: "0",
@@ -125,7 +58,7 @@ function applyLetterbox(gl, ratio) {
 
   // Resize WebGL drawing buffer to match wrapper
   const dpr = window.devicePixelRatio || 1;
-  const bufferW = Math.max(1, Math.floor(contentW * dpr));
+  const bufferW = Math.max(1, Math.floor(window.innerWidth * dpr));
   const bufferH = Math.max(1, Math.floor(contentH * dpr));
 
   if (canvas.width !== bufferW || canvas.height !== bufferH) {
