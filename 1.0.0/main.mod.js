@@ -368,7 +368,12 @@ function tickEnforce() {
     }
   }
 
-  console.log(window.localStorage.getItem("PolyCinema"));
+  //getting settings value and updating preset
+  let rawSettings = JSON.parse(window.localStorage.getItem("polytrack_v4_prod_settings"));
+
+  toggledPreset = parseInt(rawSettings[3][1],10);
+  console.log(toggledPreset);
+
 
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   st.wasEnabled = !!globalThis.cinemaEnabled;
