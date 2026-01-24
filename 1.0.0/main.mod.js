@@ -1,5 +1,5 @@
 import { PolyMod } from "https://pml.orangy.cfd/PolyTrackMods/PolyModLoader/0.5.2/PolyModLoader.js";
-import { SettingType} from "https://pml.orangy.cfd/PolyTrackMods/PolyModLoader/0.5.2/PolyModLoader.js";
+import { SettingType } from "https://pml.orangy.cfd/PolyTrackMods/PolyModLoader/0.5.2/PolyModLoader.js";
 
 
 globalThis.cinemaEnabled = true;
@@ -12,6 +12,7 @@ const PRESETS = [
   { name: "1:1", aspect: 1 / 1 },
   { name: "16:9", aspect: 16 / 9 },
   { name: "4:3", aspect: 4 / 3},
+  { name: "2.39:1", aspect: 2.39 }
 ];
 
 // Start preset (index into PRESETS)
@@ -367,6 +368,8 @@ function tickEnforce() {
     }
   }
 
+  console.log(window.localStorage.getItem("PolyCinema"));
+
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   st.wasEnabled = !!globalThis.cinemaEnabled;
 }
@@ -405,15 +408,6 @@ globalThis.__polyCinemaPrevPreset = function () {
   globalThis.__polyCinemaSetPreset(currentPreset - 1);
 };
 
-
-//add settings
-pml.registerSettingCategory("PolyCinema settings");
-pml.registerSetting("Aspect ratio", "ratio", SettingType.CUSTOM, );
-
-
-
-
-
 class cinema extends PolyMod {
   init = (pml) => {
     pml.registerBindCategory("Cinema bars");
@@ -435,6 +429,7 @@ class cinema extends PolyMod {
       },
     );
 
+    /* haha no cool in game switcher you MUST use the fancy settings i created
     pml.registerKeybind(
       "Next Cinema Preset",
       "next_cinema_preset",
@@ -446,7 +441,20 @@ class cinema extends PolyMod {
         if (globalThis.cinemaEnabled) tickEnforce();
       },
     );
+    */
+
+    this.pml = pml
+
+    //add settings options
+    pml.registerSettingCategory("PolyCinema settings");
+    pml.registerSetting("Aspect ratio", "ratio", SettingType.CUSTOM, "1", [
+      { title: "1:1", value: "1" },
+      { title: "16:9", value: "2" },
+      { title: "4:3", value: "3" },
+      { title: "2.39:1", value: "4" }
+    ]);
   };
+
 }
 
 export let polyMod = new cinema();
