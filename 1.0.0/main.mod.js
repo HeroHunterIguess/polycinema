@@ -9,6 +9,7 @@ const CINEMA_STATE_KEY = "__polyCinemaState";
 // Presets are width/height aspect ratios
 const PRESETS = [
   { name: "Off", aspect: null }, // means: use full screen
+  { name: "9:16", aspect: 9 / 16 },
   { name: "1:1", aspect: 1 / 1 },
   { name: "4:3", aspect: 4 / 3},
   { name: "3:2", aspect: 3 / 2 },
@@ -455,12 +456,13 @@ class cinema extends PolyMod {
     // Add settings options
     pml.registerSettingCategory("PolyCinema settings");
     pml.registerSetting("Aspect ratio", "ratio", SettingType.CUSTOM, "1", [
-      { title: "1:1", value: "1" },
-      { title: "4:3", value: "2" },
-      { title: "3:2", value: "3" },
-      { title: "18:9", value: "4" },
-      { title: "2.39:1", value: "5" },
-      { title: "16:9", value: "6" }
+      { title: "9:16", value: "1" },
+      { title: "1:1", value: "2" },
+      { title: "4:3", value: "3" },
+      { title: "3:2", value: "4" },
+      { title: "18:9", value: "5" },
+      { title: "2.39:1", value: "6" },
+      { title: "16:9", value: "7" }
     ]);
   };
 }
