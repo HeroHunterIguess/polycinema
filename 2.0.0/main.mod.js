@@ -1,12 +1,24 @@
 import { PolyMod, SettingType } from "https://cdn.polymodloader.com/cb/PolyTrackMods/PolyModLoader/0.5.2/PolyModLoader.js";
 
+/**
+ * Cinema Mod - Example of using Xenon GL capture library
+ * 
+ * Requires: Xenon (GL capture library)
+ * 
+ * This mod previously depended on PolyProcessing just to get GL access.
+ * Now it can depend directly on Xenon, which is lighter and more focused.
+ * 
+ * Usage:
+ * - Press E to toggle cinema mode
+ * - Use the PolyCinema settings in mod settings to change aspect ratio
+ */
+
 globalThis.cinemaEnabled = true;
 
 const CINEMA_STATE_KEY = "__polyCinemaState";
 
-// Presets are width/height aspect ratios
 const PRESETS = [
-  { name: "Off", aspect: null }, // means: use full screen
+  { name: "Off", aspect: null },
   { name: "1:1", aspect: 1 / 1 },
   { name: "4:3", aspect: 4 / 3},
   { name: "3:2", aspect: 3 / 2 },
@@ -15,14 +27,13 @@ const PRESETS = [
   { name: "16:9", aspect: 16 / 9 }
 ];
 
-// Start preset (index into PRESETS)
 let currentPreset = 0;
-
 let toggledPreset = 3;
 
 function realScreenW() {
   return document.documentElement.clientWidth;
 }
+
 function realScreenH() {
   return document.documentElement.clientHeight;
 }
@@ -33,7 +44,6 @@ function realScreenH() {
 
   const proto = HTMLCanvasElement.prototype;
 
-  // Keep original getters
   const origClientWidth = Object.getOwnPropertyDescriptor(
     proto,
     "clientWidth",
@@ -55,7 +65,6 @@ function realScreenH() {
     return { w, h };
   }
 
-  // Lie about clientWidth/clientHeight
   Object.defineProperty(proto, "clientWidth", {
     configurable: true,
     get() {
@@ -74,7 +83,6 @@ function realScreenH() {
     },
   });
 
-  // Lie about bounding rect too
   proto.getBoundingClientRect = function () {
     const s = getCinemaSize();
     if (s && this.id === "screen") {
@@ -114,7 +122,6 @@ function realScreenH() {
     "innerHeight",
   )?.get;
 
-  // Fallback in case descriptors are missing
   const realInnerWidth = () => document.documentElement.clientWidth;
   const realInnerHeight = () => document.documentElement.clientHeight;
 
@@ -131,7 +138,6 @@ function realScreenH() {
     return globalThis.cinemaEnabled && v && v.h ? v.h : realInnerHeight();
   }
 
-  // Patch window.innerWidth / innerHeight reads
   Object.defineProperty(win, "innerWidth", {
     configurable: true,
     get() {
@@ -149,8 +155,10 @@ function realScreenH() {
   console.log("[PolyCinema] Virtual window size hook installed");
 })();
 
+// Get GL using Xenon's public API
 function getGL() {
-  return globalThis.__ppGL || null;
+  // Use Xenon's exported function instead of accessing __ppGL
+  return globalThis.__xenonGetGL?.() || null;
 }
 
 function getUI() {
@@ -161,7 +169,6 @@ function fitAspect(targetAspect) {
   const screenW = realScreenW();
   const screenH = realScreenH();
 
-  // If preset is "Off" or invalid, return full screen
   if (!targetAspect || !Number.isFinite(targetAspect) || targetAspect <= 0) {
     return { contentW: screenW, contentH: screenH };
   }
@@ -178,7 +185,6 @@ function fitAspect(targetAspect) {
     contentH = Math.round(contentW / targetAspect);
   }
 
-  // Safety clamp
   contentW = Math.max(1, Math.min(screenW, contentW));
   contentH = Math.max(1, Math.min(screenH, contentH));
 
@@ -234,7 +240,6 @@ function applyLetterbox(gl) {
     ? { w: contentW, h: contentH }
     : null;
 
-  // Save original placement once
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   if (!st.saved) {
     st.saved = true;
@@ -249,15 +254,12 @@ function applyLetterbox(gl) {
     st.uiStyle = ui.getAttribute("style") || "";
   }
 
-  // Size wrapper
   wrap.style.width = `${contentW}px`;
   wrap.style.height = `${contentH}px`;
 
-  // Move into wrapper
   if (canvas.parentElement !== wrap) wrap.appendChild(canvas);
   if (ui.parentElement !== wrap) wrap.appendChild(ui);
 
-  // Canvas fills wrapper
   Object.assign(canvas.style, {
     position: "absolute",
     left: "0",
@@ -268,7 +270,6 @@ function applyLetterbox(gl) {
     zIndex: "0",
   });
 
-  // UI fills wrapper
   Object.assign(ui.style, {
     position: "absolute",
     left: "0",
@@ -278,7 +279,6 @@ function applyLetterbox(gl) {
     zIndex: "1",
   });
 
-  // Resize drawing buffer to wrapper size
   const dpr = window.devicePixelRatio || 1;
   const bufferW = Math.max(1, Math.floor(contentW * dpr));
   const bufferH = Math.max(1, Math.floor(contentH * dpr));
@@ -315,7 +315,6 @@ function disableLetterbox(gl) {
 
   globalThis.__polyCinemaVirtualSize = null;
 
-  // Restore DOM
   if (canvas && st.canvasParent) {
     if (st.canvasNext) st.canvasParent.insertBefore(canvas, st.canvasNext);
     else st.canvasParent.appendChild(canvas);
@@ -326,7 +325,6 @@ function disableLetterbox(gl) {
     else st.uiParent.appendChild(ui);
   }
 
-  // Restore inline styles
   if (canvas) {
     if (st.canvasStyle) canvas.setAttribute("style", st.canvasStyle);
     else canvas.removeAttribute("style");
@@ -339,7 +337,6 @@ function disableLetterbox(gl) {
   document.getElementById("poly-cinema-wrap")?.remove();
   document.getElementById("poly-cinema-bg")?.remove();
 
-  // Restore buffer to full screen
   try {
     const dpr = window.devicePixelRatio || 1;
     const bufferW = Math.max(1, Math.floor(window.innerWidth * dpr));
@@ -368,18 +365,16 @@ function tickEnforce() {
     }
   }
 
-  // Getting settings value and updating preset
   let rawSettings = JSON.parse(window.localStorage.getItem("polytrack_v4_prod_settings"));
 
-  toggledPreset = parseInt(rawSettings[3][1],10);
-  console.log(toggledPreset);
-
+  if (rawSettings && rawSettings[3] && rawSettings[3][1] !== undefined) {
+    toggledPreset = parseInt(rawSettings[3][1], 10);
+  }
 
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   st.wasEnabled = !!globalThis.cinemaEnabled;
 }
 
-// Hook RAF once
 (function ensureRafHooked() {
   const st = (globalThis[CINEMA_STATE_KEY] ||= {});
   if (st.rafHooked) return;
@@ -397,7 +392,6 @@ function tickEnforce() {
   console.log("[PolyCinema] Hooked requestAnimationFrame");
 })();
 
-// Public console helpers
 globalThis.__polyCinemaSetPreset = function (idx) {
   currentPreset = ((idx % PRESETS.length) + PRESETS.length) % PRESETS.length;
   console.log(
@@ -413,7 +407,7 @@ globalThis.__polyCinemaPrevPreset = function () {
   globalThis.__polyCinemaSetPreset(currentPreset - 1);
 };
 
-class cinema extends PolyMod {
+class Cinema extends PolyMod {
   init = (pml) => {
     pml.registerBindCategory("Cinema bars");
 
@@ -426,7 +420,7 @@ class cinema extends PolyMod {
       () => {
         if (currentPreset !== 0) {
           toggledPreset = currentPreset;
-          currentPreset = 0; // Off
+          currentPreset = 0;
         } else {
           currentPreset = toggledPreset || 5;
         }
@@ -434,23 +428,8 @@ class cinema extends PolyMod {
       },
     );
 
-    /* haha no cool in game switcher you MUST use the fancy settings i created !!
-    pml.registerKeybind(
-      "Next Cinema Preset",
-      "next_cinema_preset",
-      "keydown",
-      "KeyV",
-      null,
-      () => {
-        globalThis.__polyCinemaNextPreset();
-        if (globalThis.cinemaEnabled) tickEnforce();
-      },
-    );
-    */
+    this.pml = pml;
 
-    this.pml = pml
-
-    // Add settings options
     pml.registerSettingCategory("PolyCinema settings");
     pml.registerSetting("Aspect ratio", "ratio", SettingType.CUSTOM, "1", [
       { title: "1:1", value: "1" },
@@ -463,4 +442,4 @@ class cinema extends PolyMod {
   };
 }
 
-export let polyMod = new cinema();
+export let polyMod = new Cinema();

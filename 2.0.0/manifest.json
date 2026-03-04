@@ -1,0 +1,17 @@
+{
+    "polymod": {
+        "name": "PolyCinema",
+        "id": "cinema",
+        "author": "Hero, Jakob",
+        "targets": [
+            "0.5.2"
+        ],
+        "main": "main.mod.js"
+    },
+    "dependencies": [
+        {
+            "id": "xenon",
+            "version": "1.0.0"
+        }
+    ]
+}
