@@ -2,6 +2,9 @@
 
 A polytrack mod to add aspect ratio/letterbox bars.
 
+⚠️ This mod is for 0.5.2!
+It has not yet been updated to 0.6.
+
 ⚠️ This mod is in early beta!
 It IS buggy!
 
